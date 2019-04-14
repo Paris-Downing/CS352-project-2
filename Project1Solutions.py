@@ -418,18 +418,21 @@ class socket:
                 if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
                     payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
 
+            payload = buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * i + payload_len]
+
             # creates the new packet with the appropriate header
             new_packet = self.createPacket(flags=0x0,
                                            sequence_no=self.sequence_no,
                                            ack_no=self.ack_no,
-                                           payload_len=payload_len)
+                                           payload_len=payload_len,
+                                           payload=payload)
+
             # consume the sequence and ack no as it was used to create the packet
             self.sequence_no += 1
             self.ack_no += 1
 
             # attaches the payload length of buffer to the end of the header to finish constructing the packet
-            self.data_packets.append(new_packet + buffer[MAXIMUM_PAYLOAD_SIZE * i:
-                                                         MAXIMUM_PAYLOAD_SIZE * i + payload_len])
+            self.data_packets.append(new_packet)
         return total_packets
 
     # method responsible for sending data packets (used by the sender)
@@ -559,10 +562,14 @@ class socket:
                 # receives the packet of header + maximum data size bytes (although it will be limited
                 # by the sender on the other side)
 
-                packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive + 50)
+                if self.encrypt:
+                    packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive + 40)
+                    packet_received = self.box.decrypt(packet_received)
+                else:
+                    packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive)
                 #print(self.box.decrypt(packet_received))
-                print(type(packet_received))
-                print(packet_received)
+                #print(type(packet_received))
+                #print(packet_received)
 
                 # sends the packet to another method to manage it and gets back the data in return
                 str_received = self.manage_recvd_data_packet(packet_received)
@@ -587,7 +594,7 @@ class socket:
 
     # creates a generic packet to be sent using parameters that are
     # relevant to Part 1. The default values are specified above in case one or more parameters are not used
-    def createPacket(self, flags=0x0, sequence_no=0x0, ack_no=0x0, payload_len=0x0):
+    def createPacket(self, flags=0x0, sequence_no=0x0, ack_no=0x0, payload_len=0x0, payload=''):
 
         packet = struct.Struct(PACKET_HEADER_FORMAT).pack \
             (
@@ -607,7 +614,9 @@ class socket:
 
         if self.encrypt:
             nonce = nacl.utils.random(Box.NONCE_SIZE)
-            packet = self.box.encrypt(packet, nonce)
+            packet = self.box.encrypt(packet + payload, nonce)
+        else:
+            packet = packet + payload
 
         return packet
 
