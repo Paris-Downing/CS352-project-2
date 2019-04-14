@@ -219,7 +219,14 @@ class socket:
         while not received_handshake_packet:
             try:
                 # tries to receive a SYN/ACK packet from the server using recvfrom and unpacks it
-                (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+                
+                if self.encrypt:
+                    (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+                    syn_ack_packet = self.box.decrypt(syn_ack_packet)
+                else:
+                    (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+
+
                 syn_ack_packet = struct.unpack(PACKET_HEADER_FORMAT, syn_ack_packet)
                 # if it receives a reset marked flag for any reason, abort the handshake
                 if syn_ack_packet[PACKET_FLAG_INDEX] == SOCK352_RESET:
@@ -279,9 +286,10 @@ class socket:
         while not got_connection_request:
             try:
                 # tries to receive a potential SYN packet and unpacks it
-                (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
-
+                
                 if self.encrypt:
+                    (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+
                     if addr[0] == '127.0.0.1':
                         ppk = privateKeys[('*', '*')]
                         pub = publicKeys[('localhost', str(portTx))]
@@ -290,10 +298,16 @@ class socket:
                         ppk = privateKeys[('*', '*')]
                         pub = publicKeys[(addr[0], str(portTx))]
 
-                print("Private Key: {}".format(key_to_hex(ppk)))
-                print("Public Key : {}".format(key_to_hex(pub)))
+                    print("Private Key: {}".format(key_to_hex(ppk)))
+                    print("Public Key : {}".format(key_to_hex(pub)))
 
-                self.box = Box(ppk, pub)
+                    self.box = Box(ppk, pub)
+
+                    syn_packet = self.box.decrypt(syn_packet)
+
+                else:
+                    (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+
 
                 syn_packet = struct.unpack(PACKET_HEADER_FORMAT, syn_packet)
 
@@ -322,7 +336,15 @@ class socket:
         while not got_final_ack:
             try:
                 # keeps trying to receive the final ACK packet to finalize the connection
-                (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+                
+
+                if self.encrypt:
+                    (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+                    ack_packet = self.box.decrypt(ack_packet)
+                else:
+                    (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+
+
                 ack_packet = struct.unpack(PACKET_HEADER_FORMAT, ack_packet)
                 # if the unpacked packet has the ACK flag set, we are done
                 if ack_packet[PACKET_FLAG_INDEX] == SOCK352_ACK:
@@ -536,7 +558,11 @@ class socket:
             try:
                 # receives the packet of header + maximum data size bytes (although it will be limited
                 # by the sender on the other side)
-                packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive)
+
+                packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive + 50)
+                #print(self.box.decrypt(packet_received))
+                print(type(packet_received))
+                print(packet_received)
 
                 # sends the packet to another method to manage it and gets back the data in return
                 str_received = self.manage_recvd_data_packet(packet_received)
@@ -550,6 +576,7 @@ class socket:
                     bytes_to_receive -= len(str_received)
             # catches timeout, in which case it just tries to another packet
             except syssock.timeout:
+                print('Timeout?')
                 pass
         # since it's done with receiving all the bytes, it marks the socket as safe to close
         self.can_close = True
@@ -561,7 +588,8 @@ class socket:
     # creates a generic packet to be sent using parameters that are
     # relevant to Part 1. The default values are specified above in case one or more parameters are not used
     def createPacket(self, flags=0x0, sequence_no=0x0, ack_no=0x0, payload_len=0x0):
-        return struct.Struct(PACKET_HEADER_FORMAT).pack \
+
+        packet = struct.Struct(PACKET_HEADER_FORMAT).pack \
             (
                 0x1,  # version
                 flags,  # flags
@@ -577,8 +605,17 @@ class socket:
                 payload_len  # payload_len
             )
 
+        if self.encrypt:
+            nonce = nacl.utils.random(Box.NONCE_SIZE)
+            packet = self.box.encrypt(packet, nonce)
+
+        return packet
+
     # Manages a packet received based on the flag
     def manage_recvd_data_packet(self, packet):
+
+        print("Manage recvd data packet")
+
         packet_header = packet[:PACKET_HEADER_LENGTH]
         packet_data = packet[PACKET_HEADER_LENGTH:]
         packet_header = struct.unpack(PACKET_HEADER_FORMAT, packet_header)
