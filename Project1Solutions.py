@@ -20,27 +20,49 @@ from inspect import currentframe, getframeinfo
 # define the UDP ports all messages are sent
 # and received from
 
-# the ports to use for the sock352 messages 
-global sock352portTx
-global sock352portRx
-# the public and private keychains in hex format 
-global publicKeysHex
-global privateKeysHex
+# The public and private keychains in hex format 
+publicKeysHex = {}
+privateKeysHex = {}
 
-# the public and private keychains in binary format 
-global publicKeys
-global privateKeys
-
-# the encryption flag 
-global ENCRYPT
-
-publicKeysHex = {} 
-privateKeysHex = {} 
-publicKeys = {} 
+# The public and private keychains in binary format 
+publicKeys = {}
 privateKeys = {}
 
-# this is 0xEC 
-ENCRYPT = 236 
+# The encryption flag 
+ENCRYPT = 236 # this is 0xEC 
+
+# Variables that store the sending and receiving ports of the socket
+portTx = 0
+portRx = 0
+
+# Variables that store the packet header format and packet header length
+# to use within the struct in order to pack and unpack
+PACKET_HEADER_FORMAT = "!BBBBHHLLQQLL"
+PACKET_HEADER_LENGTH = struct.calcsize(PACKET_HEADER_FORMAT)
+
+# The length that encryption a packet adds.
+ENCRYPTION_LENGTH_MODIFIER = 40
+
+# Variables that are responsible for storing the maximum packet size and the
+# maximum payload size
+MAXIMUM_PACKET_SIZE = 64000
+MAXIMUM_PAYLOAD_SIZE = MAXIMUM_PACKET_SIZE - PACKET_HEADER_LENGTH
+
+# Variables that define all the packet bits
+SOCK352_SYN = 0x01
+SOCK352_FIN = 0x02
+SOCK352_ACK = 0x04
+SOCK352_RESET = 0x08
+SOCK352_HAS_OPT = 0x10
+
+# Variables that store the index for the flag, sequence no. and ack no. within the packet header
+PACKET_FLAG_INDEX = 1
+PACKET_SEQUENCE_NO_INDEX = 8
+PACKET_ACK_NO_INDEX = 9
+
+# Message to print out that a connection has been already established
+CONNECTION_ALREADY_ESTABLISHED_MESSAGE = "This socket supports a maximum of one connection\n" \
+                                 "And a connection is already established"
 
 # read the keyfile. The result should be a private key and a keychain of
 # public keys
@@ -77,37 +99,6 @@ def readKeyChain(filename):
 
 def key_to_hex(key):
     return key.encode(encoder=nacl.encoding.HexEncoder)
-
-#Global variables that store the sending and receiving ports of the socket
-portTx = 0
-portRx = 0
-
-
-#Global variables that store the packet header format and packet header length
-#to use within the struct in order to pack and unpack
-PACKET_HEADER_FORMAT = "!BBBBHHLLQQLL"
-PACKET_HEADER_LENGTH = struct.calcsize(PACKET_HEADER_FORMAT)
-
-#Global variables that are responsible for storing the maximum packet size and the
-#maximum payload size
-MAXIMUM_PACKET_SIZE = 64000
-MAXIMUM_PAYLOAD_SIZE = MAXIMUM_PACKET_SIZE - PACKET_HEADER_LENGTH
-
-#Global variables that define all the packet bits
-SOCK352_SYN = 0x01
-SOCK352_FIN = 0x02
-SOCK352_ACK = 0x04
-SOCK352_RESET = 0x08
-SOCK352_HAS_OPT = 0x10
-
-#Global variables that store the index for the flag, sequence no. and ack no. within the packet header
-PACKET_FLAG_INDEX = 1
-PACKET_SEQUENCE_NO_INDEX = 8
-PACKET_ACK_NO_INDEX = 9
-
-#String message to print out that a connection has been already established
-CONNECTION_ALREADY_ESTABLISHED_MESSAGE = "This socket supports a maximum of one connection\n" \
-                                 "And a connection is already established"
 
 def init(UDPportTx, UDPportRx):
     # Sets the transmit port to 27182 (default) if its None or 0
@@ -221,7 +212,7 @@ class socket:
                 # tries to receive a SYN/ACK packet from the server using recvfrom and unpacks it
                 
                 if self.encrypt:
-                    (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+                    (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + ENCRYPTION_LENGTH_MODIFIER)
                     syn_ack_packet = self.box.decrypt(syn_ack_packet)
                 else:
                     (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
@@ -288,7 +279,7 @@ class socket:
                 # tries to receive a potential SYN packet and unpacks it
                 
                 if self.encrypt:
-                    (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+                    (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + ENCRYPTION_LENGTH_MODIFIER)
 
                     if addr[0] == '127.0.0.1':
                         ppk = privateKeys[('*', '*')]
@@ -339,7 +330,7 @@ class socket:
                 
 
                 if self.encrypt:
-                    (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + 40)
+                    (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH + ENCRYPTION_LENGTH_MODIFIER)
                     ack_packet = self.box.decrypt(ack_packet)
                 else:
                     (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
@@ -509,7 +500,7 @@ class socket:
             # tries to receive the new packet and un-pack it
             try:
                 if self.encrypt:
-                    new_packet = self.socket.recv(PACKET_HEADER_LENGTH + 40)
+                    new_packet = self.socket.recv(PACKET_HEADER_LENGTH + ENCRYPTION_LENGTH_MODIFIER)
                     new_packet = self.box.decrypt(new_packet)
                 else:
                     new_packet = self.socket.recv(PACKET_HEADER_LENGTH)
@@ -568,7 +559,7 @@ class socket:
                 # by the sender on the other side)
 
                 if self.encrypt:
-                    packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive + 40)
+                    packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive + ENCRYPTION_LENGTH_MODIFIER)
                     packet_received = self.box.decrypt(packet_received)
                 else:
                     packet_received = self.socket.recv(PACKET_HEADER_LENGTH + bytes_to_receive)
