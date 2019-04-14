@@ -10,7 +10,7 @@ import time
 import struct 
 import md5
 import os 
-import sock352
+import Project1Solutions as sock352
 
 def main():
     # parse all the arguments to the client 

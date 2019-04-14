@@ -75,6 +75,8 @@ def readKeyChain(filename):
 
     return (publicKeys,privateKeys)
 
+def key_to_hex(key):
+    return key.encode(encoder=nacl.encoding.HexEncoder)
 
 #Global variables that store the sending and receiving ports of the socket
 portTx = 0
@@ -163,13 +165,34 @@ class socket:
         # declares the last packet that was acked (for the sender only)
         self.last_data_packet_acked = None
 
+        self.encrypt = False
+
+        self.box = None
+
     # binds the server to the receiving port
     def bind(self, address):
         self.socket.bind((address[0], portRx))
 
     # client's method to establish a connection
     def connect(self, *args):
-        address = args[0]
+        #address = args[0]
+
+        global ENCRYPT
+        global privateKeys, publicKeys, portTx
+        if (len(args) >= 1): 
+            address = args[0]
+
+        if (len(args) >= 2):
+            if (args[1] == ENCRYPT):
+                self.encrypt = True
+
+                ppk = privateKeys[('*', '*')]
+                pub = publicKeys[(address[0], str(portTx))]
+                
+                print("Private Key: {}".format(key_to_hex(ppk)))
+                print("Public Key : {}".format(key_to_hex(pub)))
+
+                self.box = Box(ppk, pub)
 
 
         # sets the send address to the tuple (address ip, transmit port)
@@ -239,7 +262,11 @@ class socket:
     # server code for establishing the connection
     def accept(self, *args):
 
-        
+        global ENCRYPT
+        if (len(args) >= 1):
+            if (args[0] == ENCRYPT):
+                self.encrypt = True
+
 
         # makes sure again that the server is not already connected
         # because part 1 supports a single connection only
@@ -253,6 +280,21 @@ class socket:
             try:
                 # tries to receive a potential SYN packet and unpacks it
                 (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
+
+                if self.encrypt:
+                    if addr[0] == '127.0.0.1':
+                        ppk = privateKeys[('*', '*')]
+                        pub = publicKeys[('localhost', str(portTx))]
+                        
+                    else:
+                        ppk = privateKeys[('*', '*')]
+                        pub = publicKeys[(addr[0], str(portTx))]
+
+                print("Private Key: {}".format(key_to_hex(ppk)))
+                print("Public Key : {}".format(key_to_hex(pub)))
+
+                self.box = Box(ppk, pub)
+
                 syn_packet = struct.unpack(PACKET_HEADER_FORMAT, syn_packet)
 
                 # if the received packet is not a SYN packet, it ignores the packet
