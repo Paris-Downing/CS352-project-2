@@ -1,1 +1,1 @@
-python client2.py -d localhost -f LICENSE -u 9999 -v 8888
+python client1.py -d localhost -f hello.txt -u 9999 -v 8888

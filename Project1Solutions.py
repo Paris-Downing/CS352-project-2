@@ -7,6 +7,75 @@ import sys
 import time
 from random import randint
 
+# encryption libraries 
+import nacl.utils
+import nacl.secret
+import nacl.utils
+from nacl.public import PrivateKey, Box
+
+# if you want to debug and print the current stack frame 
+from inspect import currentframe, getframeinfo
+
+# these are globals to the sock352 class and
+# define the UDP ports all messages are sent
+# and received from
+
+# the ports to use for the sock352 messages 
+global sock352portTx
+global sock352portRx
+# the public and private keychains in hex format 
+global publicKeysHex
+global privateKeysHex
+
+# the public and private keychains in binary format 
+global publicKeys
+global privateKeys
+
+# the encryption flag 
+global ENCRYPT
+
+publicKeysHex = {} 
+privateKeysHex = {} 
+publicKeys = {} 
+privateKeys = {}
+
+# this is 0xEC 
+ENCRYPT = 236 
+
+# read the keyfile. The result should be a private key and a keychain of
+# public keys
+def readKeyChain(filename):
+    global publicKeysHex
+    global privateKeysHex 
+    global publicKeys
+    global privateKeys 
+    
+    if (filename):
+        try:
+            keyfile_fd = open(filename,"r")
+            for line in keyfile_fd:
+                words = line.split()
+                # check if a comment
+                # more than 2 words, and the first word does not have a
+                # hash, we may have a valid host/key pair in the keychain
+                if ( (len(words) >= 4) and (words[0].find("#") == -1)):
+                    host = words[1]
+                    port = words[2]
+                    keyInHex = words[3]
+                    if (words[0] == "private"):
+                        privateKeysHex[(host,port)] = keyInHex
+                        privateKeys[(host,port)] = nacl.public.PrivateKey(keyInHex, nacl.encoding.HexEncoder)
+                    elif (words[0] == "public"):
+                        publicKeysHex[(host,port)] = keyInHex
+                        publicKeys[(host,port)] = nacl.public.PublicKey(keyInHex, nacl.encoding.HexEncoder)
+        except Exception,e:
+            print ( "error: opening keychain file: %s %s" % (filename,repr(e)))
+    else:
+            print ("error: No filename presented")             
+
+    return (publicKeys,privateKeys)
+
+
 #Global variables that store the sending and receiving ports of the socket
 portTx = 0
 portRx = 0
@@ -99,7 +168,10 @@ class socket:
         self.socket.bind((address[0], portRx))
 
     # client's method to establish a connection
-    def connect(self, address):
+    def connect(self, *args):
+        address = args[0]
+
+
         # sets the send address to the tuple (address ip, transmit port)
         self.send_address = (address[0], portTx)
 
@@ -165,7 +237,10 @@ class socket:
         return
 
     # server code for establishing the connection
-    def accept(self):
+    def accept(self, *args):
+
+        
+
         # makes sure again that the server is not already connected
         # because part 1 supports a single connection only
         if self.is_connected:

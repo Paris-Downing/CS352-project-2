@@ -1,1 +1,1 @@
-python server2.py -f LICENSE.new -u 8888 -v 9999
+python server1.py -f hello.txt.new -u 8888 -v 9999
