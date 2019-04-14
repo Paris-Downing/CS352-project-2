@@ -508,7 +508,12 @@ class socket:
         while not self.can_close:
             # tries to receive the new packet and un-pack it
             try:
-                new_packet = self.socket.recv(PACKET_HEADER_LENGTH)
+                if self.encrypt:
+                    new_packet = self.socket.recv(PACKET_HEADER_LENGTH + 40)
+                    new_packet = self.box.decrypt(new_packet)
+                else:
+                    new_packet = self.socket.recv(PACKET_HEADER_LENGTH)
+
                 new_packet = struct.unpack(PACKET_HEADER_FORMAT, new_packet)
 
                 # ignores the packet if the ACK flag is not set.
